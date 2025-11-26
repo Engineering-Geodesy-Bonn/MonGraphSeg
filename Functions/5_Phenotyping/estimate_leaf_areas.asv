@@ -1,0 +1,129 @@
+function leaf_area = estimate_leaf_areas(ptCloud_all, panoptic_segmentation_pC, panopticModel)
+%ESTIMATE_LEAF_AREAS Estimate the surface area of each leaf instance from a panoptic plant segmentation.
+%
+%   leaf_area = ESTIMATE_LEAF_AREAS(ptCloud_all, panoptic_segmentation_pC, panopticModel)
+%
+%   This function reconstructs a local surface mesh for each leaf instance in a
+%   segmented plant point cloud using a ball-pivoting algorithm and estimates
+%   the leaf surface area as the sum of all triangle areas in the mesh.
+%
+%   Input:
+%       ptCloud_all             - N×3 matrix of 3D point coordinates.
+%
+%       panoptic_segmentation_pC- N×1 vector (or N×K with labels in column 1)
+%                                 assigning each point an instance label.
+%                                 Label 1 is assumed to be background.
+%
+%       panopticModel           - Structure or array describing each
+%                                 panoptic instance (e.g. leaves).
+%                                 panopticModel(1) corresponds to background.
+%
+%   Output:
+%       leaf_area               - (M×1) vector of estimated surface areas,
+%                                 where M = length(panopticModel) - 1.
+%                                 leaf_area(i) contains the area of instance
+%                                 with label (i+1). The entry for background
+%                                 (label 1) is not returned and implicitly 0.
+%
+
+    % ---------------------------------------------------------------------
+    % 0) Initialization
+    % ---------------------------------------------------------------------
+    labels   = panoptic_segmentation_pC(:,1);      % instance labels per point
+    nInst    = length(panopticModel) - 1;          % number of foreground instances
+    leaf_area = zeros(nInst, 1, 'double');         % preallocate output
+
+    % ---------------------------------------------------------------------
+    % 1) Estimate a global ball-pivot radius from a random subset
+    % ---------------------------------------------------------------------
+    % Use only foreground points (labels >= 2) for radius estimation
+    fgMask = labels >= 2;
+    X = ptCloud_all(fgMask, 1:3);
+    X = 
+
+    if size(X,1) < 3
+        % Not enough foreground points to estimate a meaningful radius
+        return;
+    end
+
+    % Parameters (can be tuned depending on point cloud resolution)
+    num_neighbors             = 10;   % number of nearest neighbours
+    ball_pivot_radius_factor  = 2.0;  % scaling factor for ball-pivot radius
+    maxSamples                = 5000; % maximum number of points used to estimate radius
+
+    % Random subset of foreground points (greatly reduces computation time)
+    nSample = min(maxSamples, size(X,1));
+    idxSample = randperm(size(X,1), nSample);
+    Xs = X(idxSample, :);
+
+    % kNN on the subset; MATLAB internally builds a kd-tree once
+    [~, D] = knnsearch(Xs, Xs, ...
+        'K',       num_neighbors, ...
+        'Distance','euclidean', ...
+        'NSMethod','kdtree');
+
+    % Exclude self-distance in the first column
+    meanNeighborDist = mean(D(:,2:end), 'all');
+    ballPivotRadius  = ball_pivot_radius_factor * meanNeighborDist;
+
+    % ---------------------------------------------------------------------
+    % 2) Group points by instance label (single pass over all points)
+    % ---------------------------------------------------------------------
+    % Restrict to valid foreground instances (labels 2..length(panopticModel))
+    validMask   = labels >= 2 & labels <= length(panopticModel);
+    labelsValid = labels(validMask);
+    ptsValid    = ptCloud_all(validMask, 1:3);
+
+    if isempty(ptsValid)
+        % No valid foreground points
+        return;
+    end
+
+    % Map instance labels 2..N to compact group indices 1..G
+    [~,~,grpIdx] = unique(labelsValid);        % group index per point
+    % For each group (instance), store linear indices of its points
+    idxCell = accumarray(grpIdx, (1:numel(grpIdx))', [], @(x){x});
+
+    % ---------------------------------------------------------------------
+    % 3) Per-instance surface reconstruction and area estimation
+    % ---------------------------------------------------------------------
+    for k = 1:numel(idxCell)
+        idxPoints = idxCell{k};
+        points_i  = ptsValid(idxPoints, :);
+
+        % At least three non-collinear points are required to form a triangle
+        if size(points_i,1) < 3
+            continue;
+        end
+
+        % Local surface reconstruction using ball-pivoting
+        pc_i = pointCloud(points_i);
+        mesh = pc2surfacemesh(pc_i, "ball-pivot", ballPivotRadius);
+
+        % Skip if no faces were reconstructed
+        if isempty(mesh.Faces)
+            continue;
+        end
+
+        % Extract vertices and faces
+        F = mesh.Faces;
+        V = mesh.Vertices;
+
+        % Triangle vertices
+        v1 = V(F(:,1), :);
+        v2 = V(F(:,2), :);
+        v3 = V(F(:,3), :);
+
+        % Vectorized triangle area computation using the cross product:
+        % area = 0.5 * || (v2 - v1) x (v3 - v1) ||
+        cp = cross(v2 - v1, v3 - v1, 2);      % cross product per row
+        triAreas = 0.5 * sqrt(sum(cp.^2, 2)); % Euclidean norm per row
+
+        % Recover the original instance label (e.g. 2,3,4,...)
+        instID = labelsValid(idxPoints(1));
+
+        % Store accumulated area at index (instID - 1), since leaf_area(1)
+        % corresponds to label 2, leaf_area(2) to label 3, and so on.
+        leaf_area(instID - 1) = sum(triAreas);
+    end
+end
