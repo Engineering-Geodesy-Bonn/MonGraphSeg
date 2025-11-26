@@ -1,7 +1,7 @@
 # MonGraphSeg
 # Graph-based Segmentation of Plant Point Clouds for Crop Phenotyping
 
-This repository contains a MATLAB implementation for graph-based panoptic segmentation and phenotypic analysis of 3D plant point clouds, with a focus on crop phenotyping applications.
+This repository contains a MATLAB implementation for graph-based panoptic segmentation and phenotypic analysis of 3D single plant point clouds of unbranched moncotoloydenous plants
 
 ## Overview
 
