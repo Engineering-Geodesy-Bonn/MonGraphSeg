@@ -152,7 +152,7 @@ The algorithm produces:
 ## Citation
 
 If you use this code in your research, please cite:
-Annika Tobies Graph-Based Segmentation of Plant Point Clouds for Crop Phenotyping
+Annika Tobies, Felix Esser, Lasse Klingbeil and Heiner Kuhlmann. Graph-Based Segmentation of Plant Point Clouds for Crop Phenotyping. 2025. In preparation.
 
 ## License
 
