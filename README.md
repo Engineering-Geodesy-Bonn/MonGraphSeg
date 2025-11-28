@@ -152,7 +152,7 @@ The algorithm produces:
 ## Citation
 
 If you use this code in your research, please cite:
---> will be added after positive review
+Annika Tobies Graph-Based Segmentation of Plant Point Clouds for Crop Phenotyping
 
 ## License
 
